@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"reflect"
@@ -25,23 +24,22 @@ func main() {
 		panic(fmt.Sprintf("failed to connect to k8s cluster: %+v\n", err.Error()))
 	}
 
-	var operationClient internal.IOperation
+	var opsClient internal.IOperation
 
-	operationClient = infra.NewClientsetWrapper(k8sClient.GetClientset())
+	opsClient = infra.NewClientsetWrapper(k8sClient.GetClientset())
 	if useControllerRuntime {
-		operationClient = infra.NewRunclientWrapper(k8sClient.GetRunclient())
+		opsClient = infra.NewRunclientWrapper(k8sClient.GetRunclient())
 	}
 
-	fmt.Printf("using client: %+v\n", reflect.TypeOf(operationClient))
-
-	nsList, err := operationClient.ListNamespaces(context.Background())
-	if err != nil {
-		panic("")
-	}
+	fmt.Printf("using client: %+v\n", reflect.TypeOf(opsClient))
 
 	app := tview.NewApplication()
-	namespaceList := ui.NamespaceList(app, nsList)
-	if err := app.SetRoot(namespaceList, true).EnableMouse(true).Run(); err != nil {
+	pages := tview.NewPages()
+
+	rootPage, rootPageName := ui.GetRootPage(app, pages, opsClient)
+	pages.AddPage(rootPageName, rootPage, true, true)
+
+	if err := app.SetRoot(pages, true).EnableMouse(true).Run(); err != nil {
 		panic(err)
 	}
 }
