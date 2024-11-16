@@ -7,7 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-type IOperation interface {
+type IK8sOperation interface {
 	ListNamespaces(ctx context.Context) ([]*corev1.Namespace, error)
 
 	ListDeployments(ctx context.Context, namespace string) ([]*appsv1.Deployment, error)

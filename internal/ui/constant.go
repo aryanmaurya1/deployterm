@@ -1,6 +1,0 @@
-package ui
-
-const (
-	NAME_NAMESPACE_PAGE   = "NAMESPACE_PAGE"
-	NAME_ERROR_MODAL_PAGE = "ERROR_MODAL"
-)

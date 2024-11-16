@@ -24,7 +24,7 @@ func main() {
 		panic(fmt.Sprintf("failed to connect to k8s cluster: %+v\n", err.Error()))
 	}
 
-	var opsClient internal.IOperation
+	var opsClient internal.IK8sOperation
 
 	opsClient = infra.NewClientsetWrapper(k8sClient.GetClientset())
 	if useControllerRuntime {
