@@ -13,6 +13,10 @@ func NamespaceList(app *tview.Application, namespaces []*corev1.Namespace) *tvie
 		primary := ns.Name
 		secondary := fmt.Sprintf("create_at: %+v", ns.CreationTimestamp)
 		shortcut := rune(int('a') + idx)
+		if shortcut == 'q' {
+			shortcut = '1'
+		}
+
 		list.AddItem(primary, secondary, shortcut, nil)
 	}
 

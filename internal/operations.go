@@ -9,10 +9,10 @@ import (
 
 type IOperation interface {
 	ListNamespaces(ctx context.Context) ([]*corev1.Namespace, error)
-	ListDeployments(ctx context.Context, namespace string) ([]*appsv1.Deployment, error)
 
+	ListDeployments(ctx context.Context, namespace string) ([]*appsv1.Deployment, error)
 	GetDeployment(ctx context.Context, namespace string, deploymentName string) (*appsv1.Deployment, error)
+	DeleteDeployment(ctx context.Context, namespace string, deploymentName string) (*appsv1.Deployment, error)
 	CreateDeployment(ctx context.Context, namespace string, deployment *appsv1.Deployment) (*appsv1.Deployment, error)
 	UpdateDeployment(ctx context.Context, namespace string, deployment *appsv1.Deployment) (*appsv1.Deployment, error)
-	DeleteDeployment(ctx context.Context, namespace string, deploymentName string) (*appsv1.Deployment, error)
 }

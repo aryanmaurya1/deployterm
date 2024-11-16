@@ -20,30 +20,45 @@ func NewClientsetWrapper(clientset *kubernetes.Clientset) *clientsetWrapper {
 }
 
 func (csw *clientsetWrapper) ListNamespaces(ctx context.Context) ([]*corev1.Namespace, error) {
-	nsList, err := csw.clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+	namespaceList, err := csw.clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	return utils.ConvertToPtrList[corev1.Namespace](nsList.Items), nil
+	return utils.ConvertToPtrList[corev1.Namespace](namespaceList.Items), nil
 }
 
-func (rcw *runclientWrapper) ListDeployments(ctx context.Context, namespace string) ([]*appsv1.Deployment, error) {
-	return nil, nil
+func (csw *clientsetWrapper) ListDeployments(ctx context.Context, namespace string) ([]*appsv1.Deployment, error) {
+	list, err := csw.clientset.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	return utils.ConvertToPtrList(list.Items), nil
 }
 
-func (rcw *runclientWrapper) GetDeployment(ctx context.Context, namespace string, deploymentName string) (*appsv1.Deployment, error) {
-	return nil, nil
+func (csw *clientsetWrapper) GetDeployment(ctx context.Context, namespace string, deploymentName string) (*appsv1.Deployment, error) {
+	return csw.clientset.AppsV1().Deployments(namespace).Get(ctx, deploymentName, metav1.GetOptions{})
 }
 
-func (rcw *runclientWrapper) CreateDeployment(ctx context.Context, namespace string, deployment *appsv1.Deployment) (*appsv1.Deployment, error) {
-	return nil, nil
+func (csw *clientsetWrapper) CreateDeployment(ctx context.Context, namespace string, deployment *appsv1.Deployment) (*appsv1.Deployment, error) {
+	return csw.clientset.AppsV1().Deployments(namespace).Create(ctx, deployment, metav1.CreateOptions{})
 }
 
-func (rcw *runclientWrapper) UpdateDeployment(ctx context.Context, namespace string, deployment *appsv1.Deployment) (*appsv1.Deployment, error) {
-	return nil, nil
+func (csw *clientsetWrapper) UpdateDeployment(ctx context.Context, namespace string, deployment *appsv1.Deployment) (*appsv1.Deployment, error) {
+	return csw.clientset.AppsV1().Deployments(namespace).Update(ctx, deployment, metav1.UpdateOptions{})
 }
 
-func (rcw *runclientWrapper) DeleteDeployment(ctx context.Context, namespace string, deploymentName string) (*appsv1.Deployment, error) {
-	return nil, nil
+func (csw *clientsetWrapper) DeleteDeployment(ctx context.Context, namespace string, deploymentName string) (*appsv1.Deployment, error) {
+	deployment, err := csw.GetDeployment(ctx, namespace, deploymentName)
+	if err != nil {
+		return nil, err
+	}
+
+	err = csw.clientset.AppsV1().Deployments(namespace).Delete(ctx, deploymentName, metav1.DeleteOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	return deployment, err
 }
