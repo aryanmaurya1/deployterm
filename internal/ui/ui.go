@@ -8,6 +8,7 @@ import (
 	"github.com/aryanmaurya1/deployterm/internal"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -51,25 +52,87 @@ func switchToErrorPage(app *tview.Application, pages *tview.Pages, err error) {
 	pages.AddAndSwitchToPage(currentPageName, errorModal, false)
 }
 
+func switchToDetailsPage(app *tview.Application, pages *tview.Pages, namespace string, deploymentName string, opsClient internal.IK8sOperation) {
+	currentPageName := fmt.Sprintf("%d", time.Now().UnixNano())
+
+	textView := tview.NewTextView()
+	textView.SetBorder(true)
+	textView.SetTitle(fmt.Sprintf(" Namespace - <%s> | Deployment - <%s> | Details [pink](press 'Esc' to go back) ", namespace, deploymentName))
+	textView.SetTitleColor(tcell.ColorAntiqueWhite)
+	textView.SetTextColor(tcell.ColorDarkRed)
+	textView.SetFocusFunc(
+		func() {
+			deployment, err := opsClient.GetDeployment(context.Background(), namespace, deploymentName)
+			if err != nil {
+				stk.push(currentPageName)
+				switchToErrorPage(app, pages, err)
+				return
+			}
+
+			deployment.ManagedFields = nil
+			jsonData, err := yaml.Marshal(&deployment)
+			if err != nil {
+				stk.push(currentPageName)
+				switchToErrorPage(app, pages, err)
+				return
+			}
+
+			go func() {
+				textView.Clear()
+				fmt.Fprintf(textView, "%s", jsonData)
+			}()
+		})
+
+	textView.SetDoneFunc(func(key tcell.Key) {
+		if key == tcell.KeyEsc {
+			// Remove dynamically added page
+			pages.RemovePage(currentPageName)
+			pages.SwitchToPage(stk.pop())
+		}
+	})
+	pages.AddAndSwitchToPage(currentPageName, textView, true)
+}
+
 func switchToOptionsPage(app *tview.Application, pages *tview.Pages, namespace string, deploymentName string, opsClient internal.IK8sOperation) {
 	currentPageName := fmt.Sprintf("%d", time.Now().UnixNano())
 
 	list := tview.NewList()
 	list.SetBorder(true)
-	list.SetTitle(fmt.Sprintf("Namespace - <%s> | Deployment - <%s>", namespace, deploymentName))
+	list.SetTitle(fmt.Sprintf(" Namespace - <%s> | Deployment - <%s> ", namespace, deploymentName))
 	list.SetTitleColor(tcell.ColorAntiqueWhite)
 	list.SetFocusFunc(
 		func() {
 			list.Clear()
 
-			list.AddItem("Back", "Press to go back", rune('x'), func() {
+			list.AddItem("Describe", "Press to view deployment details", rune('a'), func() {
+				stk.push(currentPageName)
+				switchToDetailsPage(app, pages, namespace, deploymentName, opsClient)
+			})
+
+			list.AddItem("Edit", "Press to edit deployment", rune('b'), func() {
+				app.Stop()
+			})
+
+			list.AddItem("[darkmagenta]Delete", "Press to delete deployment", rune('c'), func() {
+				_, err := opsClient.DeleteDeployment(context.Background(), namespace, deploymentName)
+				if err != nil {
+					stk.push(currentPageName)
+					switchToErrorPage(app, pages, err)
+					return
+				}
+
 				// Remove dynamically added page
 				pages.RemovePage(currentPageName)
-
 				pages.SwitchToPage(stk.pop())
 			})
 
-			list.AddItem("Quit", "Press to exit", rune('q'), func() {
+			list.AddItem("[red]Back", "Press to go back", rune('x'), func() {
+				// Remove dynamically added page
+				pages.RemovePage(currentPageName)
+				pages.SwitchToPage(stk.pop())
+			})
+
+			list.AddItem("[red]Quit", "Press to exit", rune('q'), func() {
 				app.Stop()
 			})
 
@@ -83,7 +146,7 @@ func switchToDeploymentListPage(app *tview.Application, pages *tview.Pages, name
 
 	list := tview.NewList()
 	list.SetBorder(true)
-	list.SetTitle(fmt.Sprintf("Namespace - <%s>", namespace))
+	list.SetTitle(fmt.Sprintf(" Namespace - <%s> ", namespace))
 	list.SetTitleColor(tcell.ColorAntiqueWhite)
 	list.SetFocusFunc(
 		func() {
@@ -113,14 +176,13 @@ func switchToDeploymentListPage(app *tview.Application, pages *tview.Pages, name
 				})
 			}
 
-			list.AddItem("Back", "Press to go back", rune('x'), func() {
+			list.AddItem("[red]Back", "Press to go back", rune('x'), func() {
 				// Remove dynamically added page
 				pages.RemovePage(currentPageName)
-
 				pages.SwitchToPage(stk.pop())
 			})
 
-			list.AddItem("Quit", "Press to exit", rune('q'), func() {
+			list.AddItem("[red]Quit", "Press to exit", rune('q'), func() {
 				app.Stop()
 			})
 
@@ -129,10 +191,10 @@ func switchToDeploymentListPage(app *tview.Application, pages *tview.Pages, name
 	pages.AddAndSwitchToPage(currentPageName, list, true)
 }
 
-func rootPage(app *tview.Application, pages *tview.Pages, opsClient internal.IK8sOperation) tview.Primitive {
+func namespaceListPage(app *tview.Application, pages *tview.Pages, opsClient internal.IK8sOperation) tview.Primitive {
 	list := tview.NewList()
 	list.SetBorder(true)
-	list.SetTitle("Namespaces")
+	list.SetTitle(" Namespaces ")
 	list.SetTitleColor(tcell.ColorAntiqueWhite)
 	list.SetFocusFunc(
 		func() {
@@ -160,7 +222,7 @@ func rootPage(app *tview.Application, pages *tview.Pages, opsClient internal.IK8
 				})
 			}
 
-			list.AddItem("Quit", "Press to exit", rune('q'), func() {
+			list.AddItem("[red]Quit", "Press to exit", rune('q'), func() {
 				app.Stop()
 			})
 
@@ -169,5 +231,5 @@ func rootPage(app *tview.Application, pages *tview.Pages, opsClient internal.IK8
 }
 
 func GetRootPage(app *tview.Application, pages *tview.Pages, opsClient internal.IK8sOperation) (tview.Primitive, string) {
-	return rootPage(app, pages, opsClient), NAME_NAMESPACE_PAGE
+	return namespaceListPage(app, pages, opsClient), NAME_NAMESPACE_PAGE
 }
