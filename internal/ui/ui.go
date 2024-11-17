@@ -52,6 +52,77 @@ func switchToErrorPage(app *tview.Application, pages *tview.Pages, err error) {
 	pages.AddAndSwitchToPage(currentPageName, errorModal, false)
 }
 
+func switchToEditPage(app *tview.Application, pages *tview.Pages, namespace string, deploymentName string, opsClient internal.IK8sOperation) {
+	currentPageName := fmt.Sprintf("%d", time.Now().UnixNano())
+
+	deployment, err := opsClient.GetDeployment(context.Background(), namespace, deploymentName)
+	if err != nil {
+		stk.push(currentPageName)
+		switchToErrorPage(app, pages, err)
+		return
+	}
+	deployment.ManagedFields = nil
+
+	jsonData, err := yaml.Marshal(&deployment)
+	if err != nil {
+		stk.push(currentPageName)
+		switchToErrorPage(app, pages, err)
+		return
+	}
+
+	textArea := tview.NewTextArea().SetWrap(false).SetPlaceholder("Enter text here...")
+	textArea.SetTitle(fmt.Sprintf(" Namespace - <%s> | Deployment - <%s> | Edit [pink](press 'Esc' to go back) ", namespace, deploymentName)).SetBorder(true)
+	textArea.SetTitleColor(tcell.ColorAntiqueWhite)
+	textArea.SetText(string(jsonData), false)
+
+	helpInfo := tview.NewTextView().SetText(" press <ctrl + s> to apply")
+	position := tview.NewTextView().SetDynamicColors(true).SetTextAlign(tview.AlignRight)
+	updateInfos := func() {
+		fromRow, fromColumn, toRow, toColumn := textArea.GetCursor()
+		if fromRow == toRow && fromColumn == toColumn {
+			position.SetText(fmt.Sprintf("Row: [yellow]%d[white], Column: [yellow]%d ", fromRow, fromColumn))
+		} else {
+			position.SetText(fmt.Sprintf("[red]From[white] Row: [yellow]%d[white], Column: [yellow]%d[white] - [red]To[white] Row: [yellow]%d[white], To Column: [yellow]%d ", fromRow, fromColumn, toRow, toColumn))
+		}
+	}
+
+	textArea.SetMovedFunc(updateInfos)
+	updateInfos()
+
+	mainView := tview.NewGrid().
+		SetRows(0, 1).
+		AddItem(textArea, 0, 0, 1, 2, 0, 0, true).
+		AddItem(helpInfo, 1, 0, 1, 1, 0, 0, false).
+		AddItem(position, 1, 1, 1, 1, 0, 0, false)
+
+	mainView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape {
+			// Remove dynamically added page
+			pages.RemovePage(currentPageName)
+			pages.SwitchToPage(stk.pop())
+		} else if event.Key() == tcell.KeyCtrlS {
+			text := textArea.GetText()
+			err = yaml.Unmarshal([]byte(text), &deployment)
+			if err != nil {
+				stk.push(currentPageName)
+				switchToErrorPage(app, pages, err)
+				return event
+			}
+
+			_, err = opsClient.UpdateDeployment(context.Background(), namespace, deployment)
+			if err != nil {
+				stk.push(currentPageName)
+				switchToErrorPage(app, pages, err)
+				return event
+			}
+			pages.SwitchToPage(stk.pop())
+		}
+		return event
+	})
+
+	pages.AddAndSwitchToPage(currentPageName, mainView, true)
+}
+
 func switchToDetailsPage(app *tview.Application, pages *tview.Pages, namespace string, deploymentName string, opsClient internal.IK8sOperation) {
 	currentPageName := fmt.Sprintf("%d", time.Now().UnixNano())
 
@@ -110,7 +181,8 @@ func switchToOptionsPage(app *tview.Application, pages *tview.Pages, namespace s
 			})
 
 			list.AddItem("Edit", "Press to edit deployment", rune('b'), func() {
-				app.Stop()
+				stk.push(currentPageName)
+				switchToEditPage(app, pages, namespace, deploymentName, opsClient)
 			})
 
 			list.AddItem("[darkmagenta]Delete", "Press to delete deployment", rune('c'), func() {
