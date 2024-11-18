@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"gopkg.in/yaml.v3"
+	appsv1 "k8s.io/api/apps/v1"
 )
 
 const (
@@ -213,6 +215,81 @@ func switchToOptionsPage(app *tview.Application, pages *tview.Pages, namespace s
 	pages.AddAndSwitchToPage(currentPageName, list, true)
 }
 
+func switchToCreateDeploymentPage(app *tview.Application, pages *tview.Pages, namespace string, opsClient internal.IK8sOperation) {
+	currentPageName := fmt.Sprintf("%d", time.Now().UnixNano())
+
+	textArea := tview.NewTextArea().SetWrap(false).SetPlaceholder("Enter text here...")
+	textArea.SetTitle(fmt.Sprintf(" Namespace - <%s> | Create Deployment [pink](press 'Esc' to go back) ", namespace)).SetBorder(true)
+	textArea.SetTitleColor(tcell.ColorAntiqueWhite)
+
+	helpInfo := tview.NewTextView().SetText(" press <ctrl + s> to apply")
+	position := tview.NewTextView().SetDynamicColors(true).SetTextAlign(tview.AlignRight)
+	updateInfos := func() {
+		fromRow, fromColumn, toRow, toColumn := textArea.GetCursor()
+		if fromRow == toRow && fromColumn == toColumn {
+			position.SetText(fmt.Sprintf("Row: [yellow]%d[white], Column: [yellow]%d ", fromRow, fromColumn))
+		} else {
+			position.SetText(fmt.Sprintf("[red]From[white] Row: [yellow]%d[white], Column: [yellow]%d[white] - [red]To[white] Row: [yellow]%d[white], To Column: [yellow]%d ", fromRow, fromColumn, toRow, toColumn))
+		}
+	}
+
+	textArea.SetMovedFunc(updateInfos)
+	updateInfos()
+
+	mainView := tview.NewGrid().
+		SetRows(0, 1).
+		AddItem(textArea, 0, 0, 1, 2, 0, 0, true).
+		AddItem(helpInfo, 1, 0, 1, 1, 0, 0, false).
+		AddItem(position, 1, 1, 1, 1, 0, 0, false)
+
+	mainView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape {
+			// Remove dynamically added page
+			pages.RemovePage(currentPageName)
+			pages.SwitchToPage(stk.pop())
+		} else if event.Key() == tcell.KeyCtrlS {
+			text := textArea.GetText()
+
+			// Converting YAML to JSON, direct YAML unmarshalling into Deployment object
+			// gives error.
+			var deploymentMap = make(map[string]any)
+			err := yaml.Unmarshal([]byte(text), &deploymentMap)
+			if err != nil {
+				stk.push(currentPageName)
+				switchToErrorPage(app, pages, err)
+				return event
+			}
+
+			bytes, err := json.Marshal(deploymentMap)
+			if err != nil {
+				stk.push(currentPageName)
+				switchToErrorPage(app, pages, err)
+			}
+
+			var deployment = appsv1.Deployment{}
+			err = json.Unmarshal(bytes, &deployment)
+			if err != nil {
+				if err != nil {
+					stk.push(currentPageName)
+					switchToErrorPage(app, pages, err)
+					return event
+				}
+			}
+
+			_, err = opsClient.CreateDeployment(context.Background(), namespace, &deployment)
+			if err != nil {
+				stk.push(currentPageName)
+				switchToErrorPage(app, pages, err)
+				return event
+			}
+			pages.SwitchToPage(stk.pop())
+		}
+		return event
+	})
+
+	pages.AddAndSwitchToPage(currentPageName, mainView, true)
+}
+
 func switchToDeploymentListPage(app *tview.Application, pages *tview.Pages, namespace string, opsClient internal.IK8sOperation) {
 	currentPageName := fmt.Sprintf("%d", time.Now().UnixNano())
 
@@ -240,6 +317,8 @@ func switchToDeploymentListPage(app *tview.Application, pages *tview.Pages, name
 					shortcut = '1'
 				} else if shortcut == 'x' {
 					shortcut = '2'
+				} else if shortcut == 'n' {
+					shortcut = '3'
 				}
 
 				list.AddItem(primary, secondary, shortcut, func() {
@@ -247,6 +326,11 @@ func switchToDeploymentListPage(app *tview.Application, pages *tview.Pages, name
 					switchToOptionsPage(app, pages, namespace, deployment.Name, opsClient)
 				})
 			}
+
+			list.AddItem("[pink]Create New", "Press to create new deployment", rune('n'), func() {
+				stk.push(currentPageName)
+				switchToCreateDeploymentPage(app, pages, namespace, opsClient)
+			})
 
 			list.AddItem("[red]Back", "Press to go back", rune('x'), func() {
 				// Remove dynamically added page

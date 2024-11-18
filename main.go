@@ -39,7 +39,7 @@ func main() {
 	rootPage, rootPageName := ui.GetRootPage(app, pages, opsClient)
 	pages.AddPage(rootPageName, rootPage, true, true)
 
-	if err := app.SetRoot(pages, true).EnableMouse(true).Run(); err != nil {
+	if err := app.SetRoot(pages, true).EnableMouse(true).EnablePaste(true).Run(); err != nil {
 		panic(err)
 	}
 }
